@@ -1,5 +1,6 @@
 package com.datatrust.infrastructure.persistence.catalog;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -32,7 +33,10 @@ public class DatasetEntity {
     @Column(name = "current_version_id", nullable = false)
     private UUID currentVersionId;
 
-    @OneToMany(mappedBy = "dataset", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
+    
+    @OneToMany(mappedBy = "dataset", cascade = CascadeType.PERSIST)
     private List<DatasetVersionEntity> versions = new ArrayList<>();
 
     @Version
@@ -43,12 +47,13 @@ public class DatasetEntity {
     }
 
     public DatasetEntity(UUID id, String name, String description, UUID ownerId,
-                         UUID currentVersionId) {
+                         UUID currentVersionId, Instant createdAt) {
         this.id = id;
         this.name = name;
         this.description = description;
         this.ownerId = ownerId;
         this.currentVersionId = currentVersionId;
+        this.createdAt = createdAt;
     }
 
     public void addVersion(DatasetVersionEntity version) {
@@ -73,5 +78,9 @@ public class DatasetEntity {
 
     public UUID getCurrentVersionId() {
         return currentVersionId;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
     }
 }

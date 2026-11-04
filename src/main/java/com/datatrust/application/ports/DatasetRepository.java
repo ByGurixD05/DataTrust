@@ -11,4 +11,5 @@ public interface DatasetRepository {
     void save(DatasetWithCurrentVersion dataset);
     Optional<DatasetWithCurrentVersion> findById(UUID id);
     List<DatasetWithCurrentVersion> findPage(int page, int size);
+    List<DatasetWithCurrentVersion> findPageByOwnerId(UUID ownerId, int page, int size);
 }

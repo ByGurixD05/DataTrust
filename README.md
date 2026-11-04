@@ -1,214 +1,121 @@
 # DataTrust
 
-**DataTrust** es una API backend para registrar conjuntos de datos (*datasets*) y describir su esquema, como base para una futura plataforma de evaluación de calidad del dato.
+API REST para catalogar datasets CSV, conservar versiones inmutables de sus esquemas y validar archivos CSV frente a esos esquemas. Incluye registro de usuarios, autenticación JWT y acceso a datasets limitado por propietario o rol `ADMIN`.
 
-El proyecto se desarrolla incrementalmente. Esta primera entrega implementa el **catálogo de datasets**: alta, consulta individual y listado paginado. La validación de archivos CSV, las reglas de calidad, el cálculo de puntuaciones, el historial de ejecuciones y la autenticación real forman parte de entregas posteriores y **no deben considerarse implementados todavía**.
+> **Estado:** proyecto en desarrollo. La API cubre registro e inicio de sesión, catálogo versionado, consulta paginada y validación de CSV. No incluye todavía edición/creación de nuevas versiones mediante API, reglas de calidad configurables, informes persistidos ni puntuación de calidad.
 
-## Estado del proyecto
+## Funcionalidades
 
-| Área | Estado |
-|---|---|
-| Catálogo de datasets y columnas | Entrega 1: implementado |
-| API REST versionada | Implementada para alta y consulta |
-| Persistencia PostgreSQL y migraciones Flyway | Implementadas |
-| Pruebas unitarias y de integración con Testcontainers | Añadidas; deben ejecutarse localmente para confirmar el resultado |
-| Autenticación y autorización reales | Pendientes |
-| Reglas de calidad y motor de validación CSV | Pendientes |
-| Informes, puntuación e historial de ejecuciones | Pendientes |
-| Versionado inmutable del esquema de datasets | Pendiente de cerrar en el diseño antes del motor de validación |
+- Registro público como `DATA_STEWARD` e inicio de sesión con JWT Bearer.
+- Alta de datasets CSV con esquema inicial versionado e inmutable.
+- Consulta individual y listado paginado; los `DATA_STEWARD` solo ven sus datasets y `ADMIN` puede consultar todos.
+- Validación de CSV en streaming respecto a las columnas requeridas y sus tipos (`STRING`, `INTEGER`, `DECIMAL`, `BOOLEAN`, `DATE`).
+- Migraciones de PostgreSQL con Flyway y errores REST en formato `application/problem+json`.
 
 ## Tecnologías
 
-- Java 17
-- Spring Boot 4.1.1
-- Spring Web MVC y Bean Validation
-- Spring Data JPA / Hibernate
-- PostgreSQL 16
-- Flyway para versionar el esquema de la base de datos
-- Maven Wrapper
-- Docker y Docker Compose
-- JUnit, MockMvc y Testcontainers para pruebas
+Java 17, Spring Boot 4.1.1, Spring Security, Spring Data JPA, PostgreSQL 16, Flyway, Maven Wrapper, Docker Compose y Testcontainers.
 
-## Arquitectura
+## Requisitos
 
-El código sigue una separación por responsabilidades para evitar que las reglas de negocio dependan del framework o de la persistencia:
+- Git
+- Docker Desktop o Docker Engine con Docker Compose
+- JDK 17 para ejecutar Maven localmente (opcional si solo se usa Docker)
 
-```text
-com.datatrust.datatrust
-├── api/                 # Controladores REST, DTO y gestión de errores HTTP
-├── application/         # Casos de uso y puertos
-├── domain/              # Modelo y reglas de negocio
-├── infrastructure/      # Persistencia JPA y adaptadores
-└── common/              # Componentes compartidos
+Las pruebas de integración requieren Docker porque usan PostgreSQL mediante Testcontainers.
+
+## Inicio rápido
+
+Clona el repositorio y prepara la configuración local:
+
+```bash
+git clone https://github.com/ByGurixD095/DataTrust.git
+cd DataTrust
+cp .env.example .env
 ```
 
-El dominio no debe depender de Spring ni de JPA. La capa de aplicación coordina los casos de uso a través de puertos, mientras que la infraestructura implementa los adaptadores concretos.
+Edita `.env`: establece una contraseña local para PostgreSQL y genera un `JWT_SECRET` Base64 de al menos 32 bytes. En PowerShell:
 
-## Requisitos previos
-
-Para ejecutar la aplicación completa en local necesitas:
-
-- Git.
-- JDK 17.
-- Docker Desktop con Docker Compose disponible.
-
-Las pruebas de integración usan Testcontainers y necesitan acceso al Docker del equipo. No se ejecutan durante la construcción de la imagen Docker: se lanzan desde el entorno de desarrollo.
-
-## Configuración local
-
-La aplicación utiliza variables de entorno para conectarse a PostgreSQL. Crea un archivo `.env` en la raíz del proyecto, junto a `docker-compose.yml`, con valores locales propios:
-
-```dotenv
-POSTGRES_DB=datatrust
-POSTGRES_USER=datatrust
-POSTGRES_PASSWORD=cambia_esta_clave_local
+```powershell
+[Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
 ```
 
-Sustituye la contraseña de ejemplo por una contraseña local adecuada. **No subas `.env` al repositorio ni compartas ese archivo**. En el repositorio debe mantenerse un `.env.example` sin credenciales reales para documentar las variables necesarias.
-
-## Ejecutar con Docker Compose
-
-Desde la raíz del proyecto:
+Pega el resultado como valor de `JWT_SECRET`. No compartas ni subas `.env`; el archivo está excluido de Git. Después inicia los servicios:
 
 ```bash
 docker compose up --build -d
-```
-
-Comprueba el estado de los servicios:
-
-```bash
 docker compose ps
 docker compose logs -f app
 ```
 
-La API se publica en `http://localhost:8080`. PostgreSQL utiliza el puerto `5432` del equipo anfitrión según la configuración actual de Compose. Si no necesitas conectarte directamente a PostgreSQL desde el host, conviene limitar esa publicación a la interfaz local.
+La API estará disponible en `http://localhost:8080`. Compose publica PostgreSQL solo en `127.0.0.1:5432`. Para detener los servicios conservando los datos ejecuta `docker compose down`; para borrar también los datos locales ejecuta `docker compose down -v`.
 
-Para detener los contenedores sin borrar los datos:
+## Configuración
 
-```bash
-docker compose down
+| Variable | Obligatoria | Valor de ejemplo / predeterminado | Uso |
+| --- | --- | --- | --- |
+| `POSTGRES_DB` | Sí en Compose | `datatrust` | Base de datos PostgreSQL |
+| `POSTGRES_USER` | Sí en Compose | `datatrust` | Usuario de PostgreSQL |
+| `POSTGRES_PASSWORD` | Sí en Compose | Definir localmente | Contraseña de PostgreSQL |
+| `JWT_SECRET` | Sí | Sin valor predeterminado | Clave Base64 que debe decodificar al menos 32 bytes |
+| `DATATRUST_MAX_UPLOAD_SIZE` | No | `10MB` | Máximo para el archivo y la petición multipart |
+
+Al iniciar, Flyway aplica las migraciones y Hibernate valida el esquema existente. La aplicación no crea ni modifica el esquema automáticamente.
+
+## API
+
+Base URL: `http://localhost:8080/api/v1`. Las rutas de datasets requieren `Authorization: Bearer <accessToken>`.
+
+### Autenticación
+
+`POST /auth/register` crea una cuenta `DATA_STEWARD` y devuelve un JWT. El cliente no puede asignarse un rol. Ejemplo:
+
+```json
+{
+  "username": "ana",
+  "password": "una-clave-local-segura",
+  "displayName": "Ana García",
+  "email": "ana@example.com"
+}
 ```
 
-Para detenerlos y **eliminar también el volumen de PostgreSQL** (se perderán los datos locales):
+`POST /auth/login` recibe `username` y `password`. Ambos endpoints devuelven `accessToken`, `tokenType`, `expiresAt` y `userId`. El token expira en 15 minutos; no hay refresh token ni revocación.
 
-```bash
-docker compose down -v
-```
+### Datasets
 
-Las migraciones Flyway se aplican al iniciar la aplicación. Hibernate está configurado con `ddl-auto=validate`, por lo que valida el esquema, pero no lo crea ni lo modifica automáticamente.
+- `POST /datasets`: registra un dataset y su esquema inicial; responde `201 Created` con `Location`.
+- `GET /datasets/{id}`: consulta un dataset accesible para el usuario.
+- `GET /datasets?page=0&size=20`: lista datasets accesibles. `page` empieza en cero y `size` admite de 1 a 100.
+- `POST /datasets/{id}/validations` (`multipart/form-data`, campo `file`): valida un CSV frente al esquema vigente.
 
-## Ejecutar y verificar con Maven
+Ejemplo de alta completa: [`docs/ejemplos/crear-dataset.json`](docs/ejemplos/crear-dataset.json). La propiedad `ownerId` se deriva de la identidad autenticada y no se acepta en el cuerpo. Las versiones existentes no se pueden modificar; la API aún no crea versiones posteriores.
 
-En Windows PowerShell, desde la raíz del proyecto:
+La validación devuelve el total de filas, errores por columna, errores de cabecera y hasta 100 ejemplos de celdas inválidas. Los contadores incluyen todas las incidencias. El tamaño máximo predeterminado es 10 MB; se puede cambiar con `DATATRUST_MAX_UPLOAD_SIZE`.
+
+Los errores usan `application/problem+json`. Los estados más habituales son `400` (petición o CSV inválido), `401` (sin autenticación), `403` (sin permiso), `404` (dataset inexistente), `409` (duplicado o conflicto de concurrencia) y `413` (archivo demasiado grande). Los errores inesperados incluyen un `correlationId` sin exponer detalles internos.
+
+## Desarrollo
+
+Para ejecutar la verificación Maven (incluye pruebas que requieren Docker):
 
 ```powershell
-.\mvnw.cmd verify
+./mvnw.cmd verify
 ```
 
-En Linux o macOS:
+En Linux/macOS:
 
 ```bash
 ./mvnw verify
 ```
 
-El comando `verify` ejecuta las pruebas configuradas y las comprobaciones del ciclo de vida de Maven. Las pruebas que utilizan Testcontainers requieren Docker en ejecución. Si el wrapper no tiene descargada la distribución de Maven, necesitará acceso a Internet para obtenerla.
+Para iniciar desde Maven, configura las variables de PostgreSQL y `JWT_SECRET` en el entorno y ejecuta `./mvnw spring-boot:run` (en Windows, `./mvnw.cmd spring-boot:run`).
 
-Para iniciar la aplicación desde Maven, con una base PostgreSQL accesible y las variables de conexión configuradas:
+Consulta [CONTRIBUTING.md](CONTRIBUTING.md) para preparar cambios. Las decisiones de diseño y las limitaciones conocidas están en [`docs/decisiones.md`](docs/decisiones.md).
 
-```powershell
-.\mvnw.cmd spring-boot:run
-```
+## Seguridad
 
-## API disponible en la entrega 1
+No incluyas secretos, credenciales reales ni datos sensibles en commits o incidencias públicas. Para reportar una vulnerabilidad, consulta [SECURITY.md](SECURITY.md).
 
-Base URL: `http://localhost:8080/api/v1`
+## Licencia
 
-### Crear un dataset
-
-`POST /api/v1/datasets`
-
-Ejemplo de cuerpo JSON:
-
-```json
-{
-  "name": "clientes",
-  "description": "Datos de clientes para pruebas",
-  "format": "CSV",
-  "major": 1,
-  "minor": 0,
-  "patch": 0,
-  "columns": [
-    {
-      "name": "id",
-      "position": 1,
-      "expectedType": "INTEGER",
-      "required": true
-    },
-    {
-      "name": "email",
-      "position": 2,
-      "expectedType": "STRING",
-      "required": true
-    },
-    {
-      "name": "edad",
-      "position": 3,
-      "expectedType": "INTEGER",
-      "required": false
-    }
-  ]
-}
-```
-
-Respuesta esperada si la operación tiene éxito: `201 Created`, con una cabecera `Location` que identifica el recurso creado. El propietario no se acepta desde el cuerpo de la petición: durante esta entrega lo proporciona un proveedor de usuario temporal.
-
-### Consultar un dataset
-
-`GET /api/v1/datasets/{id}`
-
-Sustituye `{id}` por el UUID del dataset creado.
-
-### Listar datasets
-
-`GET /api/v1/datasets?page=0&size=20`
-
-- `page`: índice de página, empezando en `0`.
-- `size`: tamaño de página entre `1` y `100`; por defecto, `20`.
-
-### Errores
-
-Los errores de la API utilizan el formato `application/problem+json`. Entre los estados contemplados están:
-
-- `400 Bad Request`: petición inválida o datos que no cumplen las validaciones.
-- `404 Not Found`: dataset inexistente.
-- `409 Conflict`: nombre de dataset duplicado, sin distinguir mayúsculas y minúsculas.
-- `500 Internal Server Error`: error inesperado; la respuesta incluye un identificador de correlación, no detalles internos de la excepción.
-
-## Migraciones de base de datos
-
-Las migraciones están en `src/main/resources/db/migration`. La migración inicial `V1__catalogo.sql` crea las tablas `datasets` y `dataset_columns`, junto con sus restricciones e índices. Las modificaciones futuras del esquema deben añadirse como nuevas migraciones versionadas; evita editar una migración ya aplicada en entornos compartidos.
-
-## Seguridad y limitaciones actuales
-
-Esta entrega todavía no incluye autenticación real ni autorización por roles. El `FixedCurrentUserProvider` es temporal y devuelve un usuario fijo para desarrollo; no representa una identidad autenticada. No expongas esta versión como servicio público ni la uses con datos sensibles.
-
-También quedan pendientes, entre otros puntos:
-
-- usuarios, autenticación y roles `ADMIN` / `DATA_STEWARD`;
-- restricciones de acceso por propietario y administración;
-- un modelo de versiones de esquema inmutables;
-- reglas de calidad configurables y motor de validación de CSV;
-- cálculo de puntuación, informes e historial de ejecuciones;
-- documentación OpenAPI y comprobaciones de arquitectura automatizadas.
-
-## Decisiones y seguimiento
-
-Las decisiones técnicas y tareas pendientes de la primera entrega se documentan en [`docs/decisionesYtoDo.md`](docs/decisionesYtoDo.md). Ese documento complementa este README, pero no sustituye la descripción del estado real del código.
-
-## Desarrollo
-
-1. Crea una rama para cada cambio significativo.
-2. Añade pruebas para nuevas reglas de dominio y casos de uso.
-3. Añade una migración Flyway cuando cambie el esquema persistido.
-4. Ejecuta `mvnw.cmd verify` antes de integrar cambios en Windows, o `./mvnw verify` en Linux/macOS.
-5. No incluyas secretos, archivos `.env`, carpetas `target/` ni artefactos de compilación en los commits.
+Este proyecto se distribuye bajo la licencia [MIT](LICENSE).

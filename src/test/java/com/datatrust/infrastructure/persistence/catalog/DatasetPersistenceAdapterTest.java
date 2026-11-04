@@ -8,12 +8,14 @@ import java.util.UUID;
 
 import jakarta.persistence.EntityManager;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -33,6 +35,9 @@ import com.datatrust.domain.enums.DatasetFormat;
 @Testcontainers
 class DatasetPersistenceAdapterTest {
 
+    private static final UUID OWNER_ID =
+            UUID.fromString("00000000-0000-0000-0000-000000000001");
+
     @Container
     @ServiceConnection
     static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16-alpine");
@@ -42,6 +47,18 @@ class DatasetPersistenceAdapterTest {
 
     @Autowired
     private EntityManager entityManager;
+
+    @Autowired
+    private JdbcTemplate jdbc;
+
+    @BeforeEach
+    void insertOwner() {
+        jdbc.update("""
+                INSERT INTO users
+                    (id, username, password_hash, role, display_name, email)
+                VALUES (?, 'owner', 'test-hash', 'DATA_STEWARD', 'Owner', 'owner@example.com')
+                """, OWNER_ID);
+    }
 
     @Test
     void rejectsNameDuplicatedIgnoringCase() {
@@ -83,11 +100,10 @@ class DatasetPersistenceAdapterTest {
         DatasetColumn nombre = DatasetColumn.create("nombre", 2, ColumnType.STRING, true);
         DatasetColumn id = DatasetColumn.create("id", 1, ColumnType.INTEGER, true);
         UUID datasetId = UUID.randomUUID();
-        UUID ownerId = UUID.randomUUID();
         DatasetVersion version = DatasetVersion.create(datasetId, 1, 0, 0,
-                DatasetFormat.CSV, List.of(nombre, id), ownerId);
+                DatasetFormat.CSV, List.of(nombre, id), OWNER_ID);
         Dataset dataset = Dataset.create(datasetId, name, "descripción de prueba",
-                ownerId, version.id());
+                OWNER_ID, version.id());
         return new DatasetWithCurrentVersion(dataset, version);
     }
 }

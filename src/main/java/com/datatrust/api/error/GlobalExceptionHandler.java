@@ -11,6 +11,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -18,7 +21,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
-import com.datatrust.application.catalog.DatasetNotFoundException;
+import com.datatrust.application.validation.MalformedContentException;
+import com.datatrust.application.auth.DuplicateUserException;
+import com.datatrust.application.auth.InvalidCredentialsException;
+import com.datatrust.application.auth.InvalidPasswordException;
+import com.datatrust.application.auth.catalog.DatasetNotFoundException;
 import com.datatrust.domain.catalog.DatasetValidationException;
 import com.datatrust.domain.catalog.DuplicateDatasetNameException;
 
@@ -52,6 +59,62 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return problem;
     }
 
+    @ExceptionHandler(DuplicateUserException.class)
+    public ProblemDetail handleDuplicateUser(DuplicateUserException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        problem.setTitle("Usuario duplicado");
+        problem.setProperty("field", ex.field());
+        return problem;
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ProblemDetail handleInvalidCredentials(InvalidCredentialsException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.UNAUTHORIZED, ex.getMessage());
+        problem.setTitle("Credenciales no válidas");
+        return problem;
+    }
+
+    @ExceptionHandler(InvalidPasswordException.class)
+    public ProblemDetail handleInvalidPassword(InvalidPasswordException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        problem.setTitle("Contraseña no válida");
+        problem.setProperty("field", "password");
+        return problem;
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ProblemDetail handleOptimisticLock(ObjectOptimisticLockingFailureException ex) {
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
+                "El dataset fue modificado por otra petición. Vuelve a leerlo e inténtalo de nuevo.");
+        pd.setTitle("Conflicto de concurrencia");
+        return pd;
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ProblemDetail handleAccessDenied(AccessDeniedException ex) {
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN,
+                "No tienes permiso para realizar esta operación.");
+        pd.setTitle("Acceso denegado");
+        return pd;
+    }
+
+
+    @ExceptionHandler(AuthenticationException.class)
+    public ProblemDetail handleAuthentication(AuthenticationException ex) {
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED,
+                "Autenticación requerida.");
+        pd.setTitle("No autenticado");
+        return pd;
+    }
+
+    @ExceptionHandler(MalformedContentException.class)
+    public ProblemDetail handleMalformedContent(MalformedContentException ex) {
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        pd.setTitle("Contenido no válido");
+        return pd;
+    }
+    
     @Override
     protected ResponseEntity<Object> handleMethodArgumentNotValid(
             MethodArgumentNotValidException ex, HttpHeaders headers,

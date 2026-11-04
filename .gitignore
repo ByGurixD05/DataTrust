@@ -40,6 +40,8 @@ pgdata/
 
 # Archivos de variables de entorno (credenciales de BD, etc.)
 .env
+.env.*
+!.env.example
 
 ### Logs y Temporales ###
 *.log

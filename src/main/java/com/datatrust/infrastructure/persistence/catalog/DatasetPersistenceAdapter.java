@@ -8,8 +8,10 @@ import com.datatrust.domain.catalog.DatasetVersion;
 import com.datatrust.domain.catalog.DatasetWithCurrentVersion;
 import com.datatrust.domain.catalog.DuplicateDatasetNameException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -47,15 +49,35 @@ public class DatasetPersistenceAdapter implements DatasetRepository {
     @Override
     @Transactional(readOnly = true)
     public Optional<DatasetWithCurrentVersion> findById(UUID id) {
-        return jpa.findById(id).map(this::toDomain);
+        return jpa.findById(id)
+                .map(entity -> toDomain(entity, loadCurrentVersion(entity)));
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<DatasetWithCurrentVersion> findPage(int page, int size) {
-        var pageable = PageRequest.of(page, size, Sort.by("id").ascending());
-        return jpa.findAll(pageable).getContent().stream()
-                .map(this::toDomain)
+        var pageable = PageRequest.of(page, size,
+                Sort.by(Sort.Direction.ASC, "createdAt", "id"));
+        List<DatasetEntity> datasets = jpa.findAll(pageable).getContent();
+        return toDomain(datasets);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DatasetWithCurrentVersion> findPageByOwnerId(UUID ownerId, int page, int size) {
+        var pageable = PageRequest.of(page, size,
+                Sort.by(Sort.Direction.ASC, "createdAt", "id"));
+        List<DatasetEntity> datasets = jpa.findAllByOwnerId(ownerId, pageable).getContent();
+        return toDomain(datasets);
+    }
+
+    private List<DatasetWithCurrentVersion> toDomain(List<DatasetEntity> datasets) {
+        Map<UUID, DatasetVersionEntity> currentVersions = versions.findAllByIdIn(
+                        datasets.stream().map(DatasetEntity::getCurrentVersionId).toList())
+                .stream()
+                .collect(Collectors.toMap(DatasetVersionEntity::getId, v -> v));
+        return datasets.stream()
+                .map(entity -> toDomain(entity, currentVersions.get(entity.getCurrentVersionId())))
                 .toList();
     }
 
@@ -68,7 +90,8 @@ public class DatasetPersistenceAdapter implements DatasetRepository {
                 dataset.name(),
                 dataset.description(),
                 dataset.ownerId(),
-                dataset.currentVersionId());
+                dataset.currentVersionId(),
+                version.createdAt());
         DatasetVersionEntity versionEntity = new DatasetVersionEntity(
                 version.id(),
                 entity,
@@ -80,11 +103,17 @@ public class DatasetPersistenceAdapter implements DatasetRepository {
         return entity;
     }
 
-    private DatasetWithCurrentVersion toDomain(DatasetEntity entity) {
-        DatasetVersionEntity versionEntity = versions.findById(entity.getCurrentVersionId())
-                .orElseThrow(() -> new IllegalStateException(
-                        "No existe la versión vigente " + entity.getCurrentVersionId()
-                                + " del dataset " + entity.getId()));
+    private DatasetVersionEntity loadCurrentVersion(DatasetEntity entity) {
+        return versions.findById(entity.getCurrentVersionId()).orElse(null);
+    }
+
+    private DatasetWithCurrentVersion toDomain(DatasetEntity entity,
+                                               DatasetVersionEntity versionEntity) {
+        if (versionEntity == null) {
+            throw new IllegalStateException(
+                    "No existe la versión vigente " + entity.getCurrentVersionId()
+                            + " del dataset " + entity.getId());
+        }
         DatasetVersion version = DatasetVersion.restore(
                 versionEntity.getId(),
                 versionEntity.getDatasetId(),
