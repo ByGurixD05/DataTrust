@@ -106,6 +106,55 @@ class DatasetApiTest {
     }
 
     @Test
+    void dataStewardCannotReadAnotherOwnersDataset() throws Exception {
+        String otherOwner = registerAndGetAuthorization("other-owner");
+        String otherDataset = createAndGetId(
+                datasetJson("otro-dataset", ID_AND_EMAIL), otherOwner);
+
+        mvc.perform(get(BASE + "/" + otherDataset)
+                        .header(HttpHeaders.AUTHORIZATION, authorization))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void missingDatasetStillReturns404ForAnotherOwner() throws Exception {
+        String otherOwner = registerAndGetAuthorization("missing-owner");
+
+        mvc.perform(get(BASE + "/" + UUID.randomUUID())
+                        .header(HttpHeaders.AUTHORIZATION, otherOwner))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void dataStewardListContainsOnlyOwnedDatasets() throws Exception {
+        String otherOwner = registerAndGetAuthorization("list-other-owner");
+        createAndGetId(datasetJson("propio", ID_AND_EMAIL));
+        createAndGetId(datasetJson("ajeno", ID_AND_EMAIL), otherOwner);
+
+        mvc.perform(get(BASE).header(HttpHeaders.AUTHORIZATION, authorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].name").value("propio"));
+    }
+
+    @Test
+    void adminCanReadAndListDatasetsFromAllOwners() throws Exception {
+        String otherOwner = registerAndGetAuthorization("admin-other-owner");
+        String otherDataset = createAndGetId(
+                datasetJson("dataset-ajeno", ID_AND_EMAIL), otherOwner);
+        String adminAuthorization = createAdminAndGetAuthorization();
+
+        mvc.perform(get(BASE + "/" + otherDataset)
+                        .header(HttpHeaders.AUTHORIZATION, adminAuthorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("dataset-ajeno"));
+
+        mvc.perform(get(BASE).header(HttpHeaders.AUTHORIZATION, adminAuthorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1));
+    }
+
+    @Test
     void duplicateNameIgnoringCaseReturns409() throws Exception {
         createAndGetId(datasetJson("clientes", ID_AND_EMAIL));
 
@@ -177,8 +226,12 @@ class DatasetApiTest {
     }
 
     private String createAndGetId(String json) throws Exception {
+        return createAndGetId(json, authorization);
+    }
+
+    private String createAndGetId(String json, String ownerAuthorization) throws Exception {
         MvcResult result = mvc.perform(post(BASE)
-                        .header(HttpHeaders.AUTHORIZATION, authorization)
+                        .header(HttpHeaders.AUTHORIZATION, ownerAuthorization)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
                 .andExpect(status().isCreated())
@@ -186,6 +239,39 @@ class DatasetApiTest {
 
         String location = result.getResponse().getHeader(HttpHeaders.LOCATION);
         return location.substring(location.lastIndexOf('/') + 1);
+    }
+
+    private String registerAndGetAuthorization(String username) throws Exception {
+        MvcResult result = mvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "%s",
+                                  "password": "dataset-test-password-123",
+                                  "displayName": "Other owner",
+                                  "email": "%s@example.com"
+                                }
+                                """.formatted(username, username)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return "Bearer " + jsonValue(result.getResponse().getContentAsString(), "accessToken");
+    }
+
+    private String createAdminAndGetAuthorization() throws Exception {
+        String passwordHash = jdbc.queryForObject(
+                "SELECT password_hash FROM users WHERE username = 'dataset-owner'", String.class);
+        jdbc.update("""
+                INSERT INTO users (id, username, password_hash, role, display_name, email)
+                VALUES (?, 'dataset-admin', ?, 'ADMIN', 'Dataset admin', 'dataset-admin@example.com')
+                """, UUID.randomUUID(), passwordHash);
+        MvcResult result = mvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"dataset-admin","password":"dataset-test-password-123"}
+                                """))
+                .andExpect(status().isOk())
+                .andReturn();
+        return "Bearer " + jsonValue(result.getResponse().getContentAsString(), "accessToken");
     }
 
     private static String datasetJson(String name, String columns) {

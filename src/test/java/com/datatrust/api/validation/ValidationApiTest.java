@@ -136,6 +136,25 @@ class ValidationApiTest {
     }
 
     @Test
+    void dataStewardCannotValidateAnotherOwnersDataset() throws Exception {
+        String otherOwner = registerAndGetAuthorization();
+
+        mvc.perform(upload(datasetId, "id,email\n1,a@x.es\n", otherOwner))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void adminCanValidateAnotherOwnersDataset() throws Exception {
+        String adminAuthorization = createAdminAndGetAuthorization();
+
+        mvc.perform(multipart(DATASETS + "/" + datasetId + "/validations")
+                        .file(csvFile("id,email\n1,a@x.es\n"))
+                        .header(HttpHeaders.AUTHORIZATION, adminAuthorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.valid").value(true));
+    }
+
+    @Test
     void validationRequiresAuthentication() throws Exception {
         mvc.perform(multipart(DATASETS + "/" + datasetId + "/validations")
                         .file(csvFile("id,email\n1,a@x.es\n")))
@@ -143,9 +162,14 @@ class ValidationApiTest {
     }
 
     private MockMultipartHttpServletRequestBuilder upload(String id, String csv) {
+        return upload(id, csv, authorization);
+    }
+
+    private MockMultipartHttpServletRequestBuilder upload(
+            String id, String csv, String requestAuthorization) {
         return multipart(DATASETS + "/" + id + "/validations")
                 .file(csvFile(csv))
-                .header(HttpHeaders.AUTHORIZATION, authorization);
+                .header(HttpHeaders.AUTHORIZATION, requestAuthorization);
     }
 
     private static MockMultipartFile csvFile(String csv) {
@@ -173,6 +197,41 @@ class ValidationApiTest {
                 .andReturn();
         String location = result.getResponse().getHeader(HttpHeaders.LOCATION);
         return location.substring(location.lastIndexOf('/') + 1);
+    }
+
+    private String registerAndGetAuthorization() throws Exception {
+        MvcResult result = mvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "other-validator",
+                                  "password": "validation-test-password-123",
+                                  "displayName": "Other validator",
+                                  "email": "other-validator@example.com"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return "Bearer " + jsonValue(result.getResponse().getContentAsString(), "accessToken");
+    }
+
+    private String createAdminAndGetAuthorization() throws Exception {
+        String passwordHash = jdbc.queryForObject(
+                "SELECT password_hash FROM users WHERE username = 'validator'", String.class);
+        jdbc.update("""
+                INSERT INTO users (id, username, password_hash, role, display_name, email)
+                VALUES (?, 'validation-admin', ?, 'ADMIN', 'Validation admin',
+                        'validation-admin@example.com')
+                """, UUID.randomUUID(), passwordHash);
+        MvcResult result = mvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"validation-admin",
+                                 "password":"validation-test-password-123"}
+                                """))
+                .andExpect(status().isOk())
+                .andReturn();
+        return "Bearer " + jsonValue(result.getResponse().getContentAsString(), "accessToken");
     }
 
     private static String jsonValue(String json, String field) {

@@ -59,6 +59,19 @@ public class DatasetPersistenceAdapter implements DatasetRepository {
         var pageable = PageRequest.of(page, size,
                 Sort.by(Sort.Direction.ASC, "createdAt", "id"));
         List<DatasetEntity> datasets = jpa.findAll(pageable).getContent();
+        return toDomain(datasets);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DatasetWithCurrentVersion> findPageByOwnerId(UUID ownerId, int page, int size) {
+        var pageable = PageRequest.of(page, size,
+                Sort.by(Sort.Direction.ASC, "createdAt", "id"));
+        List<DatasetEntity> datasets = jpa.findAllByOwnerId(ownerId, pageable).getContent();
+        return toDomain(datasets);
+    }
+
+    private List<DatasetWithCurrentVersion> toDomain(List<DatasetEntity> datasets) {
         Map<UUID, DatasetVersionEntity> currentVersions = versions.findAllByIdIn(
                         datasets.stream().map(DatasetEntity::getCurrentVersionId).toList())
                 .stream()

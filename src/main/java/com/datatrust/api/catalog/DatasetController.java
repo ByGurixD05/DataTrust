@@ -21,7 +21,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import com.datatrust.api.catalog.dto.CreateDatasetRequest;
 import com.datatrust.api.catalog.dto.DatasetResponse;
-import com.datatrust.application.catalog.DatasetService;
+import com.datatrust.application.auth.catalog.DatasetService;
 import com.datatrust.application.ports.CurrentUserProvider;
 import com.datatrust.domain.catalog.DatasetColumn;
 
@@ -64,14 +64,16 @@ public class DatasetController {
 
     @GetMapping("/{id}")
     public DatasetResponse get(@PathVariable UUID id) {
-        return DatasetResponse.from(datasets.get(id));
+        return DatasetResponse.from(datasets.get(
+                id, currentUser.currentUserId(), currentUser.currentUserRole()));
     }
 
     @GetMapping
     public List<DatasetResponse> list(
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return datasets.list(page, size).stream()
+        return datasets.list(page, size, currentUser.currentUserId(),
+                        currentUser.currentUserRole()).stream()
                 .map(DatasetResponse::from)
                 .toList();
     }

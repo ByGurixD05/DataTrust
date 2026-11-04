@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.datatrust.api.validation.dto.ValidationReportResponse;
+import com.datatrust.application.ports.CurrentUserProvider;
 import com.datatrust.application.validation.ValidationService;
 
 @RestController
@@ -19,9 +20,11 @@ import com.datatrust.application.validation.ValidationService;
 public class ValidationController {
 
     private final ValidationService validations;
+    private final CurrentUserProvider currentUser;
 
-    public ValidationController(ValidationService validations) {
+    public ValidationController(ValidationService validations, CurrentUserProvider currentUser) {
         this.validations = validations;
+        this.currentUser = currentUser;
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -29,6 +32,7 @@ public class ValidationController {
             @PathVariable UUID datasetId,
             @RequestParam("file") MultipartFile file) throws IOException {
         return ValidationReportResponse.from(
-                validations.validate(datasetId, file.getInputStream()));
+                validations.validate(datasetId, file.getInputStream(),
+                        currentUser.currentUserId(), currentUser.currentUserRole()));
     }
 }

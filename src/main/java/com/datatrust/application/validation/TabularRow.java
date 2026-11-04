@@ -17,7 +17,11 @@ public record TabularRow(long number, Map<String, String> values) {
 
     /** Valor de la columna, o cadena vacía si la fila no la tiene. */
     public String value(String columnName) {
-        return values.getOrDefault(normalize(columnName), "");
+        return valueNormalized(normalize(columnName));
+    }
+
+    String valueNormalized(String normalizedColumnName) {
+        return values.getOrDefault(normalizedColumnName, "");
     }
 
     /** Nombre de columna normalizado: sin espacios alrededor y en minúsculas. */

@@ -1,4 +1,4 @@
-package com.datatrust.application.catalog;
+package com.datatrust.application.auth.catalog;
 
 import java.util.UUID;
 

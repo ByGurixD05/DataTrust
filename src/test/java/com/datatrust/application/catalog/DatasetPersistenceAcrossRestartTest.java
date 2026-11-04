@@ -12,6 +12,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import com.datatrust.domain.catalog.DatasetColumn;
 import com.datatrust.domain.enums.ColumnType;
 import com.datatrust.domain.enums.DatasetFormat;
+import com.datatrust.application.auth.catalog.DatasetService;
+import com.datatrust.application.ports.DatasetRepository;
 import com.datatrust.support.SharedPostgres;
 import com.datatrust.support.StandaloneApplication;
 
@@ -38,7 +40,7 @@ class DatasetPersistenceAcrossRestartTest {
 
         try (ConfigurableApplicationContext second =
                      StandaloneApplication.start(SharedPostgres.CONTAINER)) {
-            var found = second.getBean(DatasetService.class).get(id);
+            var found = second.getBean(DatasetRepository.class).findById(id).orElseThrow();
 
             assertThat(found.dataset().name()).isEqualTo("persistente");
             assertThat(found.currentVersion().schemaSnapshot().columns()).hasSize(1);

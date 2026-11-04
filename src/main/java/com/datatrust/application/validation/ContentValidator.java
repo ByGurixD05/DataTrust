@@ -23,10 +23,11 @@ public class ContentValidator {
             throws IOException {
         Set<String> headers = reader.headers();
         List<String> headerErrors = new ArrayList<>();
-        List<DatasetColumn> present = new ArrayList<>();
+        List<ColumnToValidate> present = new ArrayList<>();
         for (DatasetColumn column : columns) {
-            if (headers.contains(TabularRow.normalize(column.name()))) {
-                present.add(column);
+            String normalizedName = TabularRow.normalize(column.name());
+            if (headers.contains(normalizedName)) {
+                present.add(new ColumnToValidate(column, normalizedName));
             } else {
                 headerErrors.add("Falta la columna '" + column.name() + "'");
             }
@@ -47,20 +48,23 @@ public class ContentValidator {
                 : "no es un valor válido de tipo " + column.expectedType();
     }
 
+    private record ColumnToValidate(DatasetColumn column, String normalizedName) {
+    }
+
     private static final class ReportBuilder {
 
-        private final List<DatasetColumn> columns;
+        private final List<ColumnToValidate> columns;
         private final Map<String, Long> errorsByColumn = new TreeMap<>();
         private final List<CellError> samples = new ArrayList<>();
         private long rows;
 
-        ReportBuilder(List<DatasetColumn> columns) {
+        ReportBuilder(List<ColumnToValidate> columns) {
             this.columns = columns;
         }
 
         void addRow(TabularRow row) {
             rows++;
-            for (DatasetColumn column : columns) {
+            for (ColumnToValidate column : columns) {
                 checkCell(row, column);
             }
         }
@@ -69,8 +73,9 @@ public class ContentValidator {
             return new ValidationReport(rows, headerErrors, errorsByColumn, samples);
         }
 
-        private void checkCell(TabularRow row, DatasetColumn column) {
-            String value = row.value(column.name());
+        private void checkCell(TabularRow row, ColumnToValidate checkedColumn) {
+            DatasetColumn column = checkedColumn.column();
+            String value = row.valueNormalized(checkedColumn.normalizedName());
             String reason = reasonFor(column, value);
             if (reason == null) {
                 return;

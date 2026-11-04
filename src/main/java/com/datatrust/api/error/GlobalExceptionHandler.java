@@ -21,11 +21,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
-import com.datatrust.application.catalog.DatasetNotFoundException;
 import com.datatrust.application.validation.MalformedContentException;
 import com.datatrust.application.auth.DuplicateUserException;
 import com.datatrust.application.auth.InvalidCredentialsException;
 import com.datatrust.application.auth.InvalidPasswordException;
+import com.datatrust.application.auth.catalog.DatasetNotFoundException;
 import com.datatrust.domain.catalog.DatasetValidationException;
 import com.datatrust.domain.catalog.DuplicateDatasetNameException;
 
